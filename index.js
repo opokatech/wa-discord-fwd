@@ -1,5 +1,5 @@
 require('dotenv').config();
-const { default: makeWASocket, useMultiFileAuthState, DisconnectReason, downloadMediaMessage } = require('@whiskeysockets/baileys');
+const { makeWASocket, useMultiFileAuthState, DisconnectReason, downloadMediaMessage } = require('@whiskeysockets/baileys');
 const { Boom } = require('@hapi/boom');
 const pino = require('pino');
 const qrcode = require('qrcode-terminal');
@@ -53,10 +53,15 @@ async function start() {
       try {
         // Handle images
         if (msg.message?.imageMessage) {
-          const buffer = await downloadMediaMessage(msg, 'buffer', {}, {
-            logger: pino({ level: 'silent' }),
-            reuploadRequest: sock.updateMediaMessage
-          });
+          const buffer = await downloadMediaMessage(
+            msg,
+            'buffer',
+            {},
+            {
+              logger: pino({ level: 'silent' }),
+              reuploadRequest: sock.updateMediaMessage
+            }
+          );
           const form = new FormData();
           form.append('file', buffer, {
             filename: `wa-image-${Date.now()}.jpg`,

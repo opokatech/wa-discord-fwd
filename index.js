@@ -9,6 +9,10 @@ const FormData = require('form-data');
 const DISCORD_WEBHOOK = process.env.DISCORD_WEBHOOK_URL;
 const TARGET_GROUP_ID = process.env.TARGET_GROUP_ID || 'targetgroup@g.us';  // Set in .env
 
+// Cache to store recent messages for reaction context
+const messageCache = new Map();
+const CACHE_SIZE = 100; // Keep last 100 messages
+
 async function start() {
   const { state, saveCreds } = await useMultiFileAuthState('auth_info');
 
@@ -51,6 +55,37 @@ async function start() {
       let content = `[whatsapp: ${sender}]: `;
 
       try {
+        // Handle reactions
+        if (msg.message?.reactionMessage) {
+          const reaction = msg.message.reactionMessage.text;
+          const reactionEmoji = {
+            '👍': 'thumbs up',
+            '❤️': 'heart',
+            '😂': 'laughing face',
+            '😢': 'crying face',
+            '😮': 'surprised face',
+            '🔥': 'fire',
+            '👏': 'clapping hands',
+            '🙏': 'folded hands',
+            '😊': 'smile'
+          };
+          const reactionText = reactionEmoji[reaction] || reaction;
+
+          // Get the message key that was reacted to
+          const quotedKey = msg.message.reactionMessage.key?.id;
+          let originalText = quotedKey ? messageCache.get(quotedKey) : null;
+
+          const reactionContent = originalText
+            ? `Reacted [${reactionText}] to: "${originalText.slice(0, 100)}${originalText.length > 100 ? '...' : ''}"`
+            : `[Reaction: ${reactionText}]`;
+
+          const payload = { content: content + reactionContent };
+
+          await axios.post(DISCORD_WEBHOOK, payload, { timeout: 5000 });
+          console.log(`Forwarded reaction from ${sender}: ${reactionText}`);
+          return;
+        }
+
         // Handle images
         if (msg.message?.imageMessage) {
           const buffer = await downloadMediaMessage(
@@ -76,6 +111,14 @@ async function start() {
 
         // Handle text
         const text = msg.message?.conversation || msg.message?.extendedTextMessage?.text || '[Unsupported media]';
+
+        // Cache this message for reaction lookups
+        messageCache.set(msg.key.id, text.slice(0, 100));
+        if (messageCache.size > CACHE_SIZE) {
+          const firstKey = messageCache.keys().next().value;
+          messageCache.delete(firstKey);
+        }
+
         const payload = { content: content + text.slice(0, 1900) };  // Discord limit
 
         await axios.post(DISCORD_WEBHOOK, payload, { timeout: 5000 });

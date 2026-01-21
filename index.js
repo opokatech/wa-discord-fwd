@@ -42,11 +42,11 @@ async function start() {
     const msg = m.messages[0];
     // console.log('Group ID:', msg.key.remoteJid);
 
-    if (!msg.key.fromMe && msg.key.remoteJid.endsWith('@g.us')) {  // Log all groups first
-      console.log('Group candidate:', msg.key.remoteJid);
-    }
+    // if (!msg.key.fromMe && msg.key.remoteJid.endsWith('@g.us')) {  // Log all groups first
+    //   console.log('Group candidate:', msg.key.remoteJid);
+    // }
 
-    if (!msg.key.fromMe && msg.key.remoteJid === TARGET_GROUP_ID) {
+    if (msg.key.remoteJid === TARGET_GROUP_ID) {
       const sender = msg.pushName || msg.key.participant?.split('@')[0]?.slice(0, 32) || 'Unknown';
       let content = `[whatsapp: ${sender}]: `;
 

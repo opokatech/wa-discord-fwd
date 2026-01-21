@@ -2,7 +2,7 @@
 
 ## Project Overview
 
-This project is a one-way message forwarder that automatically sends messages from a WhatsApp group to a Discord server via webhooks. It uses the Baileys library to connect to WhatsApp Web and monitors a target group for new messages, then forwards them in real-time to Discord. The application is designed to run continuously using PM2 process management.
+This project is a one-way message forwarder that automatically sends messages from a WhatsApp group to a Discord server via webhooks. It uses the Baileys library to connect to WhatsApp Web and monitors a target group for new messages, then forwards them in real-time to Discord.
 
 **Note:** This project (including this file) was generated with assistance from AI (Perplexity + GitHub Copilot).
 

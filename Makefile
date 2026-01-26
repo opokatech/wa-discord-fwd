@@ -11,10 +11,9 @@ run:
 
 clean:
 	rm -rf node_modules
-	rm -f package-lock.json
 
 cleanall: clean
-	rm -f .env auth_info
+	rm -rf .env auth_info
 
 .DEFAULT_GOAL := help
 

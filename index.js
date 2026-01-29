@@ -11,7 +11,13 @@ const TARGET_GROUP_ID = process.env.TARGET_GROUP_ID || 'targetgroup@g.us';  // S
 
 // Cache to store recent messages for reaction context
 const messageCache = new Map();
-const CACHE_SIZE = 100; // Keep last 100 messages
+const CACHE_SIZE = 500;
+const QUOTE_TRUNCATE = 500;
+
+function quoteText(text) {
+  const truncated = text.slice(0, QUOTE_TRUNCATE) + (text.length >= QUOTE_TRUNCATE ? '...' : '');
+  return truncated.split('\n').map(line => `> ${line}`).join('\n');
+}
 
 async function start() {
   const { state, saveCreds } = await useMultiFileAuthState('auth_info');
@@ -73,13 +79,16 @@ async function start() {
 
           // Get the message key that was reacted to
           const quotedKey = msg.message.reactionMessage.key?.id;
-          let originalText = quotedKey ? messageCache.get(quotedKey) : null;
+          const original = quotedKey ? messageCache.get(quotedKey) : null;
 
-          const reactionContent = originalText
-            ? `Reacted [${reactionText}] to: "${originalText.slice(0, 100)}${originalText.length > 100 ? '...' : ''}"`
-            : `[Reaction: ${reactionText}]`;
+          let reactionContent;
+          if (original) {
+            reactionContent = `reacted [${reactionText}] to ${original.sender}:\n${quoteText(original.text)}`;
+          } else {
+            reactionContent = `[Reaction: ${reactionText}]`;
+          }
 
-          const payload = { content: content + reactionContent };
+          const payload = { content: `[whatsapp: ${sender}] ${reactionContent}` };
 
           await axios.post(DISCORD_WEBHOOK, payload, { timeout: 5000 });
           console.log(`Forwarded reaction from ${sender}: ${reactionText}`);
@@ -110,19 +119,33 @@ async function start() {
         }
 
         // Handle text
-        const text = msg.message?.conversation || msg.message?.extendedTextMessage?.text || '[Unsupported media]';
+        const text = msg.message?.conversation || msg.message?.extendedTextMessage?.text;
+        if (!text) {
+          const msgType = Object.keys(msg.message || {}).filter(k => k !== 'messageContextInfo').join(', ');
+          const payload = { content: `${content}[Unsupported: ${msgType}]` };
+          await axios.post(DISCORD_WEBHOOK, payload, { timeout: 5000 });
+          console.log(`Forwarded unsupported message type from ${sender}: ${msgType}`);
+          return;
+        }
 
-        // Cache this message for reaction lookups
-        messageCache.set(msg.key.id, text.slice(0, 100));
+        // Cache this message for reaction/reply lookups
+        messageCache.set(msg.key.id, { text, sender });
         if (messageCache.size > CACHE_SIZE) {
           const firstKey = messageCache.keys().next().value;
           messageCache.delete(firstKey);
         }
 
-        const payload = { content: content + text.slice(0, 1900) };  // Discord limit
+        // Add quoted message reference for replies
+        const quotedId = msg.message?.extendedTextMessage?.contextInfo?.stanzaId;
+        const original = quotedId ? messageCache.get(quotedId) : null;
+        if (original) {
+          content = `[whatsapp: ${sender}] replied to ${original.sender}:\n${quoteText(original.text)}\n`;
+        }
+
+        const payload = { content: (content + text).slice(0, 1900) };  // Discord limit
 
         await axios.post(DISCORD_WEBHOOK, payload, { timeout: 5000 });
-        console.log(`Forwarded text from ${sender}: ${text.slice(0, 50)}`);
+        console.log(`Forwarded text from ${sender}: ${text.slice(0, QUOTE_TRUNCATE)}`);
       } catch (error) {
         console.error('Forward failed:', error.message);
       }

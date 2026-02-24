@@ -90,12 +90,11 @@ def main():
         if chat_jid != TARGET_GROUP_ID:
             return
 
-        sender = event.Info.Pushname or event.Info.MessageSource.Sender.User[:32] or "Unknown"
-
-        # Track participant name for @mention resolution
         participant = event.Info.MessageSource.Sender.User
-        if participant and event.Info.Pushname:
-            contact_names[participant] = event.Info.Pushname
+        pushname = event.Info.Pushname
+        if participant and pushname:
+            contact_names[participant] = pushname
+        sender = pushname or contact_names.get(participant) or participant[:32] or "Unknown"
 
         try:
             # Reactions

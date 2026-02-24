@@ -14,7 +14,7 @@ CACHE_SIZE = 500
 QUOTE_TRUNCATE = 500
 SILENT_TYPES = {"senderKeyDistributionMessage", "protocolMessage"}
 
-contact_names = {}   # phone_number -> display_name
+contact_names = {}   # phone_or_lid -> display_name
 
 
 def init_cache(db_path="message_cache.db"):
@@ -57,9 +57,13 @@ def quoteText(text):
     return "\n".join(f"> {line}" for line in truncated.split("\n"))
 
 
-def resolveMentions(text, names=None):
+def resolveMentions(text, names=None, mentioned_jids=None):
     if names is None:
         names = contact_names
+    if mentioned_jids:
+        resolved = [names.get(j.split('@')[0], j.split('@')[0]) for j in mentioned_jids]
+        it = iter(resolved)
+        return re.sub(r"@\S+", lambda m: f"@{next(it, m.group(0)[1:])}", text)
     return re.sub(
         r"@(\d+)",
         lambda m: f"@{names[m.group(1)]}" if m.group(1) in names else m.group(0),
@@ -67,10 +71,15 @@ def resolveMentions(text, names=None):
     )
 
 
+def resolve_sender_name(phone: str, pushname: str, names: dict) -> str:
+    return names.get(phone) or pushname or phone[:32] or "Unknown"
+
+
 def main():
     import requests  # noqa: PLC0415
     from neonize.client import NewClient
     from neonize.events import ConnectedEv, MessageEv
+    from neonize.utils.jid import build_jid
 
     cache = init_cache()
     client = NewClient("neonize.db")
@@ -78,6 +87,30 @@ def main():
     @client.event(ConnectedEv)
     def on_connected(_client, _event):
         print("WhatsApp connected!")
+        try:
+            for c in client.contact.get_all_contacts():
+                if c.JID.Server == "lid":
+                    continue  # LIDs resolved later from group participant list
+                phone = c.JID.User
+                name = c.Info.FullName or c.Info.PushName
+                if phone and name:
+                    contact_names[phone] = name
+            print(f"Loaded {len(contact_names)} contacts")
+        except Exception as e:
+            print(f"Could not load contacts: {e}")
+        # Pre-populate LID -> name from group participant list
+        try:
+            group_user, _, group_server = TARGET_GROUP_ID.partition('@')
+            group_info = client.get_group_info(build_jid(group_user, group_server))
+            for p in group_info.Participants:
+                lid = p.LID.User
+                phone = p.PhoneNumber.User or p.JID.User
+                name = contact_names.get(phone) or p.DisplayName
+                if lid and name:
+                    contact_names[lid] = name
+            print(f"Loaded {len(group_info.Participants)} group participants")
+        except Exception as e:
+            print(f"Could not load group participants: {e}")
 
     def post_to_discord(content):
         payload = {"content": content[:1900]}  # Discord message limit
@@ -90,11 +123,16 @@ def main():
         if chat_jid != TARGET_GROUP_ID:
             return
 
-        participant = event.Info.MessageSource.Sender.User
-        pushname = event.Info.Pushname
-        if participant and pushname:
-            contact_names[participant] = pushname
-        sender = pushname or contact_names.get(participant) or participant[:32] or "Unknown"
+        sender_jid = event.Info.MessageSource.Sender
+        if sender_jid.Server == "lid":
+            alt = event.Info.MessageSource.SenderAlt
+            phone = alt.User if alt.User else sender_jid.User
+        else:
+            phone = sender_jid.User
+        sender = resolve_sender_name(phone, event.Info.Pushname, contact_names)
+        # Cache LID -> resolved name so @lid mentions in message text resolve correctly
+        if sender_jid.Server == "lid" and sender_jid.User and sender != "Unknown":
+            contact_names[sender_jid.User] = sender
 
         try:
             # Reactions
@@ -140,14 +178,31 @@ def main():
             )
 
             if raw_text:
-                text = resolveMentions(raw_text)
+                is_extended = event.Message.HasField("extendedTextMessage")
+                mentioned_jids = (
+                    list(event.Message.extendedTextMessage.contextInfo.mentionedJID)
+                    if is_extended
+                    else None
+                )
+                # Resolve any mentioned LIDs not yet in contact_names
+                for jid_str in (mentioned_jids or []):
+                    user, _, server = jid_str.partition('@')
+                    if user and user not in contact_names and server == "lid":
+                        try:
+                            phone_jid = wa.get_pn_from_lid(build_jid(user, "lid"))
+                            name = contact_names.get(phone_jid.User)
+                            if name:
+                                contact_names[user] = name
+                        except Exception:
+                            pass
+                text = resolveMentions(raw_text, mentioned_jids=mentioned_jids)
 
                 # Persist for reaction/reply lookups
                 cache_set(cache, event.Info.ID, sender, text)
 
                 # Reply context
                 content = f"[whatsapp: {sender}]: "
-                if event.Message.HasField("extendedTextMessage"):
+                if is_extended:
                     quoted_id = event.Message.extendedTextMessage.contextInfo.stanzaID
                     original = cache_get(cache, quoted_id)
                     if original:

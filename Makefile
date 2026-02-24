@@ -1,19 +1,25 @@
-.PHONY: req-install req-update run clean cleanall
+.PHONY: req-install req-update run test clean cleanall help
 
 req-install:
-	npm install
+	pip install pip-tools
+	pip-sync requirements.txt
 
 req-update:
-	npm update
+	pip-compile --upgrade requirements.in
+	pip-sync requirements.txt
 
 run:
-	node index.js
+	python app.py
+
+test:
+	pytest tests/ -v
 
 clean:
-	rm -rf node_modules
+	find . -type d -name __pycache__ -exec rm -rf {} + 2>/dev/null || true
+	rm -rf .pytest_cache
 
 cleanall: clean
-	rm -rf .env auth_info
+	rm -rf .env neonize.db message_cache.db
 
 .DEFAULT_GOAL := help
 
@@ -22,5 +28,6 @@ help:
 	@echo "  req-install  - Install dependencies"
 	@echo "  req-update   - Update dependencies"
 	@echo "  run          - Start the WA -> Discord forwarder"
-	@echo "  clean        - Remove node_modules and package-lock.json"
-	@echo "  cleanall     - Remove all generated files including .env and auth_info"
+	@echo "  test         - Run test suite"
+	@echo "  clean        - Remove __pycache__ dirs"
+	@echo "  cleanall     - Remove all generated files including .env and neonize.db"

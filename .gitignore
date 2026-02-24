@@ -1,3 +1,8 @@
-node_modules
 .env
-auth_info
+__pycache__/
+*.pyc
+*.pyo
+.venv/
+neonize.db
+message_cache.db
+.pytest_cache/

@@ -56,10 +56,13 @@ make cleanall       # Remove .env and neonize.db (resets session)
 
 Copy `.env_template` to `.env` and fill in:
 
-```
-DISCORD_WEBHOOK_URL=https://discord.com/api/webhooks/...
-TARGET_GROUP_ID=1234567890-123456789@g.us
-```
+| Variable | Required | Description |
+|---|---|---|
+| `DISCORD_WEBHOOK_URL` | Yes | Discord webhook endpoint |
+| `TARGET_GROUP_ID` | Yes | WhatsApp group JID (`1234567890-123456789@g.us`) |
+| `DEVICE_NAME` | No | Name shown in WhatsApp → Linked Devices (default: `Neonize`) |
+
+> **Note:** `DEVICE_NAME` is only applied when pairing for the first time (or after deleting `neonize.db`). To rename an existing session, run `make cleanall` and re-pair.
 
 ### How to get your Discord webhook URL
 

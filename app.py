@@ -10,6 +10,7 @@ load_dotenv()
 
 DISCORD_WEBHOOK = os.getenv("DISCORD_WEBHOOK_URL")
 TARGET_GROUP_ID = os.getenv("TARGET_GROUP_ID", "targetgroup@g.us")
+DEVICE_NAME = os.getenv("DEVICE_NAME", "Neonize")
 CACHE_SIZE = 500
 QUOTE_TRUNCATE = 500
 SILENT_TYPES = {"senderKeyDistributionMessage", "protocolMessage"}
@@ -79,25 +80,15 @@ def main():
     import requests  # noqa: PLC0415
     from neonize.client import NewClient
     from neonize.events import ConnectedEv, MessageEv
+    from neonize.proto.waCompanionReg.WAWebProtobufsCompanionReg_pb2 import DeviceProps
     from neonize.utils.jid import build_jid
 
     cache = init_cache()
-    client = NewClient("neonize.db")
+    client = NewClient("neonize.db", props=DeviceProps(os=DEVICE_NAME, platformType=DeviceProps.SAFARI))
 
     @client.event(ConnectedEv)
     def on_connected(_client, _event):
         print("WhatsApp connected!")
-        try:
-            for c in client.contact.get_all_contacts():
-                if c.JID.Server == "lid":
-                    continue  # LIDs resolved later from group participant list
-                phone = c.JID.User
-                name = c.Info.FullName or c.Info.PushName
-                if phone and name:
-                    contact_names[phone] = name
-            print(f"Loaded {len(contact_names)} contacts")
-        except Exception as e:
-            print(f"Could not load contacts: {e}")
         # Pre-populate LID -> name from group participant list
         try:
             group_user, _, group_server = TARGET_GROUP_ID.partition('@')
@@ -165,8 +156,11 @@ def main():
                         mime,
                     )
                 }
-                data = {"content": f"[whatsapp: {sender}]: [Image]"}
+                caption = event.Message.imageMessage.caption
+                data = {"content": f"[whatsapp: {sender}]:"}
                 requests.post(DISCORD_WEBHOOK, data=data, files=files, timeout=10).raise_for_status()
+                if caption:
+                    post_to_discord(caption)
                 print(f"Forwarded image from {sender}")
                 return
 

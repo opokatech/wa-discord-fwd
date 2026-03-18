@@ -32,7 +32,9 @@ All logic lives in `app.py`:
 
 1. **Connection** (`main()`) - Creates a neonize WhatsApp client, handles QR auth on first run (session persisted in `neonize.db`), connects and blocks.
 
-2. **Message handler** (`on_message` event, registered via `@client.event(MessageEv)`) - Filters messages by `TARGET_GROUP_ID`, then dispatches by type:
+2. **Connected handler** (`on_connected` event) - Pre-populates `contact_names` from the group participant list so display names are available before any messages arrive.
+
+3. **Message handler** (`on_message` event, registered via `@client.event(MessageEv)`) - Filters messages by `TARGET_GROUP_ID`, then dispatches by type:
    - **Reactions** - Maps emoji to text description, looks up original message + sender from cache, formats as `[whatsapp: X] reacted [Y] to Z:` with blockquote. Un-reacts (empty emoji) are silently dropped.
    - **Images** - Downloads media via `wa.download_any()`, uploads to Discord as multipart form-data
    - **Replies** - Looks up quoted message + sender from cache via `contextInfo.stanzaID`, formats as `[whatsapp: X] replied to Z:` with blockquote
